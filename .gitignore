@@ -1,0 +1,13 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+Cargo.lock
+
+# User configuration (keeps personal server IP private!)
+config.json
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db

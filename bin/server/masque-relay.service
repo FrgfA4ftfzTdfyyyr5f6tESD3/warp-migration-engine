@@ -1,0 +1,14 @@
+[Unit]
+Description=Cloudflare WARP Handshake Migration Relay Engine
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/masque-relay 2632
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
