@@ -89,6 +89,38 @@ Natively supports all official and dynamic Cloudflare WARP ports:
 
 ---
 
+## 🔬 Network Architecture & Theoretical Dynamics
+
+### 1. Bandwidth Offloading & Clean Egress IP
+In conventional VPN or proxy architectures, the intermediate relay must proxy every single inbound and outbound byte. This creates immediate CPU, socket buffer, and bandwidth saturation.
+
+Under the **Warp Migration Engine** architecture:
+* **The relay acts strictly as a lightweight signaling gateway**, handling only ~300 to 400 bytes per handshake negotiation.
+* **100% of high-bandwidth streaming, downloads, and web browsing** routes directly through Cloudflare's enterprise-grade Anycast edge infrastructure.
+* **Clean Exit IP:** The user’s public egress IP is Cloudflare’s clean, unthrottled Anycast IP rather than a flagged VPS datacenter IP.
+* **Massive Concurrency:** A modest $3/month cloud instance or free-tier VPS with 1 Gbps port can effortlessly handle **10,000+ simultaneous active users** without bandwidth bottlenecks.
+
+### 2. Unicast vs. Anycast (Cloudflare Unimog) Dynamics
+* **Unicast Infrastructures (ProtonVPN, Self-Hosted Linux Servers):**
+  In non-load-balanced setups, path bifurcation is native. Once the obfuscated handshake completes via the relay, the client sends its first direct Type 4 data packet. The Linux kernel’s standard WireGuard driver triggers its native Endpoint Roaming mechanism (authenticating the payload via Poly1305) and dynamically updates the peer's remote endpoint to the client's direct physical IP. Relay bandwidth consumption stays fixed at ~272 bytes.
+* **Anycast Cluster Infrastructures (Cloudflare WARP):**
+  Cloudflare employs proprietary Layer 4 load balancing (Unimog) with connection-tracking socket bindings. Incoming direct packets with a new 4-tuple (source IP/port change) are dropped unless session affinity is maintained. WME solves this through:
+  1. RFC 9000 QUIC Connection Migration: Retaining active Connection IDs so edge workers route 1-RTT Short Header packets seamlessly.
+  2. WireGuard Client ID Injection: Embedding the client session ID into the 3-byte Reserved field of the WireGuard transport header, instructing Unimog to direct packets to the exact edge node possessing the active session keys.
+
+### 3. Anycast Edge Isolation & Geo-Routing Constraints
+Cloudflare operates no physical edge PoPs inside restricted territories such as Iran. Major domestic transit carriers (e.g., Hamrah-e Aval / MCI, Irancell) enforce deterministic upstream routing toward specific European transit hubs—frequently Stockholm, Sweden (ARN), Frankfurt (FRA), or Amsterdam (AMS).
+
+Because Anycast edge clusters isolate cryptographic session state, negotiated ephemeral session keys exist exclusively within the memory of edge workers in that physical data center and are not mirrored globally. For maximum reliability:
+* **Co-Locating the Relay:** Aligning the relay VPS location with the ISP’s natural egress path (e.g., Sweden, Germany, or the Netherlands) ensures that the initial handshake and subsequent direct 1-RTT packets hit the identical Anycast cluster holding the active keys.
+
+### 4. Direct Relayless WireGuard: Inverted Rekeying & Role Swap (Mode 1)
+For users running standalone without an external relay server:
+* **Stateful CPS Pinhole:** The client initiates connection by transmitting pseudo-random junk packets (configurable 40–1000B, 1–10 bursts) to penetrate stateful CG-NAT firewalls and obscure the 148-byte Type 1 initiation signature.
+* **Inverted Rekeying (Role Swap):** Upon validating the remote peer’s Type 2 response, the client freezes its internal `REKEY_AFTER_TIME` timer and shifts into a permanent **Passive Responder**. When the server’s `REJECT_AFTER_TIME` nears expiration, the remote server naturally becomes the **Initiator**, sending rekey handshakes as *inbound* traffic—bypassing outbound DPI state machines completely.
+
+---
+
 ## 📦 Quick Start (Windows Client)
 
 No installation required. Pre-compiled standalone binaries are available in `bin/client/`.
